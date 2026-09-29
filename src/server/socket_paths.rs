@@ -104,6 +104,10 @@ mod tests {
 
     #[test]
     fn client_socket_path_defaults_to_config_dir() {
+        // Mutates SESSION_ENV_VAR and the explicit-session override, so it must
+        // hold the shared env lock. Its callees take no lock, so acquiring here
+        // cannot nest.
+        let _lock = crate::test_env::lock();
         std::env::remove_var(crate::session::SESSION_ENV_VAR);
         crate::session::clear_explicit_session_for_test();
         let path = client_socket_path_from_overrides(None, None);

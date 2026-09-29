@@ -337,11 +337,10 @@ mod tests {
     use std::ffi::OsStr;
     use std::io::{BufRead, BufReader, Write};
     use std::os::unix::net::UnixListener;
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::Mutex;
 
     fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
+        crate::test_env::raw()
     }
 
     fn unique_test_dir(name: &str) -> std::path::PathBuf {
@@ -361,7 +360,9 @@ mod tests {
 
     #[test]
     fn server_daemon_command_clears_socket_overrides_for_explicit_session() {
-        let _guard = env_lock().lock().unwrap();
+        let _guard = env_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         std::env::set_var(crate::api::SOCKET_PATH_ENV_VAR, "/tmp/inherited.sock");
         std::env::set_var("HERDR_CLIENT_SOCKET_PATH", "/tmp/inherited-client.sock");
         std::env::remove_var(crate::session::SESSION_ENV_VAR);
@@ -540,7 +541,9 @@ test "$sid" = "$$"
 
     #[test]
     fn validate_running_server_compatibility_fails_when_status_api_missing() {
-        let _guard = env_lock().lock().unwrap();
+        let _guard = env_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let dir = unique_test_dir("missing-api");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("api.sock");
@@ -558,7 +561,9 @@ test "$sid" = "$$"
 
     #[test]
     fn validate_running_server_compatibility_names_session_commands_for_protocol_mismatch() {
-        let _guard = env_lock().lock().unwrap();
+        let _guard = env_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let dir = unique_test_dir("named-protocol");
         std::env::set_var("XDG_CONFIG_HOME", &dir);
         std::env::set_var(crate::session::SESSION_ENV_VAR, "work");

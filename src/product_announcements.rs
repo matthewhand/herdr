@@ -231,8 +231,7 @@ mod tests {
     use super::*;
 
     fn env_lock() -> &'static std::sync::Mutex<()> {
-        static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
-        LOCK.get_or_init(|| std::sync::Mutex::new(()))
+        crate::test_env::raw()
     }
 
     fn temp_path(name: &str) -> PathBuf {
@@ -308,7 +307,9 @@ mod tests {
 
     #[test]
     fn fake_announcement_body_env_creates_preview() {
-        let _guard = env_lock().lock().unwrap();
+        let _guard = env_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         unsafe {
             std::env::set_var(FAKE_ANNOUNCEMENT_BODY_ENV, "### Preview\n- Local body");
             std::env::set_var(FAKE_ANNOUNCEMENT_TITLE_ENV, "Local title");
