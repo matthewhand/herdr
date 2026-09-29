@@ -1,0 +1,96 @@
+id = "freebuff"
+version = "2026.09.28.1"
+min_engine_version = 1
+updated_at = "2026-09-28T00:00:00Z"
+aliases = ["codebuff", "freebuff-cli", "herdr:freebuff"]
+# Evidence: live bottom-buffer captures from Freebuff 0.0.172 in Herdr on Linux,
+# cross-checked against `strings` of the shipped 0.0.172 native binary.
+#
+# Freebuff is a closed-source, ad-supported CLI published on the Codebuff
+# platform. It has no plugin or hook API, so it can only ever be observed by
+# screen. Its chrome is reworded often and the binary ships frequently, so every
+# rule below is gated on paired, structural controls rather than on a single
+# transient phrase.
+#
+# The input box is the stable Freebuff fingerprint. The binary defines the
+# placeholder as "enter a coding task or / for commands" and falls back to
+# "Enter a coding task" when the pane is narrower than 65 columns, so the anchor
+# matches only the shared prefix. The box draws a blinking block cursor (U+258D)
+# immediately before the placeholder text; substring matching is unaffected
+# because the cursor is a prefix, not an interruption.
+#
+# Active turn. The status row carries the activity label, an elapsed timer, and a
+# stop affordance on the right; the input box stays visible underneath with its
+# placeholder intact, so the fingerprint is still present mid-turn. The binary
+# renders the stop badge from keys:"Ctrl+C / Esc" (action:"stop") and also emits
+# the muted hint "Esc to cancel the current response". The observed compact form
+# is a U+25A0 square followed by " Esc". All three are accepted because the
+# compact and long badge forms have both been seen across builds.
+#
+# Question overlay. Freebuff interrupts a turn to ask the user structured
+# questions. The binary hardcodes the modal title as " Some questions for you "
+# and renders a bordered box with a "Submit" action button and the paired footer
+# controls "Up Down navigate" and "Enter select", plus a "Close" control in the
+# header. This overlay replaces the input box, so the fingerprint is absent while
+# it is up; it is matched on its own structural triple instead. Requiring the
+# Submit button together with both footer controls keeps ordinary assistant prose
+# that happens to mention one of them from being read as a blocker.
+#
+# When no rule matches, Herdr falls back to idle for a known agent, which is the
+# correct reading for "turn finished, waiting for the next prompt". A Freebuff
+# build that rewords this chrome therefore degrades to idle rather than to a
+# wrong working or blocked state.
+#
+# Session limit. Freebuff meters usage with "Freebucks" and, when a session is
+# exhausted, replaces the input box with a "Session ended" banner telling the user
+# to rejoin the wait room. This is reported as blocked rather than idle because
+# the agent cannot make further progress until the user acts, and because the
+# status row above the banner still shows the stale activity label and stop badge
+# from the turn that was cut short. The input box is gone, so turn_working cannot
+# match and the idle fallback would otherwise misreport this as a finished turn.
+# Requiring the banner together with one of its two Freebuff-specific strings
+# keeps a transcript that merely quotes the words from matching.
+[[rules]]
+id = "session_ended_blocked"
+state = "blocked"
+priority = 990
+region = "bottom_non_empty_lines(12)"
+visible_blocker = true
+all = [
+  { contains = ["session ended"] },
+]
+any = [
+  { contains = ["rejoin"] },
+  { contains = ["freebucks"] },
+]
+[[rules]]
+id = "question_overlay_blocked"
+state = "blocked"
+priority = 980
+region = "bottom_non_empty_lines(24)"
+visible_blocker = true
+all = [
+  { contains = ["submit"] },
+  { contains = ["navigate", "enter select"] },
+]
+# The overlay is modal: Esc interrupts the turn rather than dismissing it, and
+# the input box is replaced, so no not-gate is needed against the working rule.
+# Rules are evaluated by descending priority, so this wins over turn_working
+# even if a future build keeps the input box mounted behind the overlay.
+[[rules]]
+id = "turn_working"
+state = "working"
+priority = 900
+region = "bottom_non_empty_lines(6)"
+visible_working = true
+all = [
+  { contains = ["enter a coding task"] },
+]
+any = [
+  { contains = ["■ esc"] },
+  { contains = ["ctrl+c / esc"] },
+  { contains = ["esc to cancel the current response"] },
+]
+# The fingerprint is absent while the user is mid-keystroke, because typed text
+# replaces the placeholder. That is intentional: a pane being typed into is not
+# a working turn, and Herdr's known-agent idle fallback covers it.

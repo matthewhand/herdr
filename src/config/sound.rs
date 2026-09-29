@@ -146,6 +146,9 @@ impl AgentSoundOverrides {
             Some(Agent::Letta) => self.letta,
             Some(Agent::Maki) => self.maki,
             Some(Agent::Muse) => self.muse,
+            // Freebuff has no per-agent sound override field; it uses the
+            // default setting like the other hook-authority agents.
+            Some(Agent::Freebuff) => AgentSoundSetting::Default,
             None => AgentSoundSetting::Default,
         }
     }
