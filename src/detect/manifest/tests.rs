@@ -56,18 +56,42 @@ fn with_manifest_dirs<T>(name: &str, f: impl FnOnce() -> T) -> T {
     std::env::set_var("XDG_CONFIG_HOME", &config_dir);
     std::env::set_var("XDG_STATE_HOME", &state_dir);
     reload_manifests();
+    // Restore on the normal *and* the unwinding path. The manifest cache is
+    // process-global and is rebuilt from the ambient state dir, so a panic inside
+    // `f` would otherwise leave this test's synthetic manifests installed for the
+    // rest of the run, silently changing what unrelated detection tests see.
+    let restore = ManifestDirsRestore {
+        old_config,
+        old_state,
+        base,
+    };
     let result = f();
-    match old_config {
-        Some(value) => std::env::set_var("XDG_CONFIG_HOME", value),
-        None => std::env::remove_var("XDG_CONFIG_HOME"),
-    }
-    match old_state {
-        Some(value) => std::env::set_var("XDG_STATE_HOME", value),
-        None => std::env::remove_var("XDG_STATE_HOME"),
-    }
-    reload_manifests();
-    let _ = std::fs::remove_dir_all(&base);
+    drop(restore);
     result
+}
+
+/// Restores the real config/state dirs and rebuilds the manifest cache from
+/// them, then removes the temp tree. Mirrors `StateDirRestore` in
+/// `src/detect/manifest_update.rs`.
+struct ManifestDirsRestore {
+    old_config: Option<std::ffi::OsString>,
+    old_state: Option<std::ffi::OsString>,
+    base: std::path::PathBuf,
+}
+
+impl Drop for ManifestDirsRestore {
+    fn drop(&mut self) {
+        match self.old_config.take() {
+            Some(value) => std::env::set_var("XDG_CONFIG_HOME", value),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match self.old_state.take() {
+            Some(value) => std::env::set_var("XDG_STATE_HOME", value),
+            None => std::env::remove_var("XDG_STATE_HOME"),
+        }
+        reload_manifests();
+        let _ = std::fs::remove_dir_all(&self.base);
+    }
 }
 
 fn write_remote_codex(content: &str) {
