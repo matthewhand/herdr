@@ -65,10 +65,11 @@ pub enum Agent {
     Letta,
     Maki,
     Muse,
+    Freebuff,
 }
 
 impl Agent {
-    pub const ALL: [Self; 24] = [
+    pub const ALL: [Self; 25] = [
         Self::Pi,
         Self::Claude,
         Self::Codex,
@@ -93,9 +94,10 @@ impl Agent {
         Self::Letta,
         Self::Maki,
         Self::Muse,
+        Self::Freebuff,
     ];
 
-    pub const SCREEN_MANIFEST_AGENTS: [Self; 22] = [
+    pub const SCREEN_MANIFEST_AGENTS: [Self; 23] = [
         Self::Pi,
         Self::Claude,
         Self::Codex,
@@ -118,6 +120,7 @@ impl Agent {
         Self::Letta,
         Self::Maki,
         Self::Muse,
+        Self::Freebuff,
     ];
 }
 
@@ -147,6 +150,7 @@ pub fn agent_label(agent: Agent) -> &'static str {
         Agent::Letta => "letta",
         Agent::Maki => "maki",
         Agent::Muse => "muse",
+        Agent::Freebuff => "freebuff",
     }
 }
 
@@ -182,6 +186,7 @@ pub fn interactive_agent_executable(agent: Agent) -> &'static str {
         Agent::Letta => "letta",
         Agent::Maki => "maki",
         Agent::Muse => "muse",
+        Agent::Freebuff => "freebuff",
     }
 }
 
@@ -217,6 +222,13 @@ fn lookup_agent(name: &str) -> Option<Agent> {
         "grok" | "grok-build" => Some(Agent::Grok),
         "hermes" | "hermes-agent" => Some(Agent::Hermes),
         "kilo" | "kilo-code" | "kilo code" => Some(Agent::Kilo),
+        // Freebuff is the ad-supported CLI published on the Codebuff platform.
+        // Its npm launcher is a thin shim that execs the downloaded native
+        // release, but the running process keeps the `freebuff` name even when
+        // installed from an arbitrary path, so basename matching is enough.
+        // `codebuff` is the platform's own product name and is accepted for the
+        // same binary.
+        "freebuff" | "codebuff" => Some(Agent::Freebuff),
         "qodercli" | "qoderclicn" | "qoder" | "qodercn" => Some(Agent::Qodercli),
         "qwen" | "qwen-code" | "qwen code" => Some(Agent::Qwen),
         "letta" | "letta-code" | "letta code" => Some(Agent::Letta),
@@ -938,6 +950,12 @@ mod tests {
         assert_eq!(identify_agent("hermes-agent"), Some(Agent::Hermes));
         assert_eq!(identify_agent("kilo"), Some(Agent::Kilo));
         assert_eq!(identify_agent("kilo-code"), Some(Agent::Kilo));
+        assert_eq!(identify_agent("freebuff"), Some(Agent::Freebuff));
+        assert_eq!(identify_agent("codebuff"), Some(Agent::Freebuff));
+        assert_eq!(
+            identify_agent("/home/user/.config/manicode/freebuff"),
+            Some(Agent::Freebuff)
+        );
         assert_eq!(identify_agent("qwen"), Some(Agent::Qwen));
         assert_eq!(identify_agent("Qwen Code"), Some(Agent::Qwen));
         assert_eq!(identify_agent("letta"), Some(Agent::Letta));
@@ -1029,6 +1047,7 @@ mod tests {
             (Agent::Letta, "letta"),
             (Agent::Maki, "maki"),
             (Agent::Muse, "muse"),
+            (Agent::Freebuff, "freebuff"),
         ];
         assert_eq!(expected.len(), Agent::ALL.len());
         for (agent, executable) in expected {
@@ -1065,6 +1084,19 @@ mod tests {
             assert!(session_identity_only_integration(source, label));
             assert!(Agent::SCREEN_MANIFEST_AGENTS.contains(&agent));
         }
+    }
+
+    #[test]
+    fn freebuff_has_no_integration_so_state_comes_from_screen_detection() {
+        // Freebuff ships a closed native binary with no plugin or hook API, so
+        // it can never own lifecycle authority. It must stay a screen-manifest
+        // agent: that is the only way its pane can report a state at all.
+        assert!(!full_lifecycle_hook_authority("herdr:freebuff", "freebuff"));
+        assert!(!session_identity_only_integration(
+            "herdr:freebuff",
+            "freebuff"
+        ));
+        assert!(Agent::SCREEN_MANIFEST_AGENTS.contains(&Agent::Freebuff));
     }
 
     #[test]
