@@ -608,7 +608,11 @@ contains = ["{contains}"]
     }
 
     fn with_state_dir<T>(name: &str, f: impl FnOnce() -> T) -> T {
-        let _guard = crate::config::test_config_env_lock().lock().unwrap();
+        let _guard = crate::config::test_config_env_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // Capture the real values before anything is overwritten; restoring
+        // these is the whole point of the guard below.
         let old_config = std::env::var_os("XDG_CONFIG_HOME");
         let old_state = std::env::var_os("XDG_STATE_HOME");
         let dir = std::env::temp_dir().join(format!(
@@ -621,18 +625,81 @@ contains = ["{contains}"]
         std::env::set_var("XDG_CONFIG_HOME", &config_dir);
         std::env::set_var("XDG_STATE_HOME", &state_dir);
         crate::detect::manifest::reload_manifests();
+        // Restore on the way out *including* on unwind. The manifest cache is
+        // process-global and is rebuilt from the ambient state dir, so a panic
+        // inside `f` would otherwise leave XDG_CONFIG_HOME/XDG_STATE_HOME
+        // pointed at a temp dir that is about to be deleted and leave the cache
+        // repopulated with no bundled manifests, turning one real failure into a
+        // cascade of unrelated `unknown`-state failures across the suite.
+        let restore = StateDirRestore {
+            old_config,
+            old_state,
+            dir,
+        };
         let result = f();
-        match old_config {
-            Some(value) => std::env::set_var("XDG_CONFIG_HOME", value),
-            None => std::env::remove_var("XDG_CONFIG_HOME"),
-        }
-        match old_state {
-            Some(value) => std::env::set_var("XDG_STATE_HOME", value),
-            None => std::env::remove_var("XDG_STATE_HOME"),
-        }
-        crate::detect::manifest::reload_manifests();
-        let _ = fs::remove_dir_all(&dir);
+        drop(restore);
         result
+    }
+
+    /// Restores the real config/state dirs and rebuilds the manifest cache from
+    /// them, then removes the temp tree. Runs on the normal and unwinding paths.
+    struct StateDirRestore {
+        old_config: Option<std::ffi::OsString>,
+        old_state: Option<std::ffi::OsString>,
+        dir: std::path::PathBuf,
+    }
+
+    impl Drop for StateDirRestore {
+        fn drop(&mut self) {
+            match self.old_config.take() {
+                Some(value) => std::env::set_var("XDG_CONFIG_HOME", value),
+                None => std::env::remove_var("XDG_CONFIG_HOME"),
+            }
+            match self.old_state.take() {
+                Some(value) => std::env::set_var("XDG_STATE_HOME", value),
+                None => std::env::remove_var("XDG_STATE_HOME"),
+            }
+            crate::detect::manifest::reload_manifests();
+            let _ = fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    #[test]
+    fn with_state_dir_restores_env_when_the_body_panics() {
+        // A panic inside the body must not leave the process pointing at the temp
+        // state dir, whose contents are then deleted. Either leak turns later
+        // unrelated detection assertions into an `unknown` state.
+        //
+        // This deliberately does not compare against a value captured before the
+        // call: another env-mutating test may legitimately change
+        // XDG_CONFIG_HOME in between, since holding the shared lock here would
+        // deadlock against `with_state_dir`, which takes it itself. Asserting the
+        // negative invariant is both deterministic and the actual defect.
+        let marker = "herdr-manifest-update-restore-on-panic";
+        let result = std::panic::catch_unwind(|| {
+            with_state_dir("restore-on-panic", || -> () {
+                assert!(
+                    std::env::var_os("XDG_STATE_HOME")
+                        .is_some_and(|value| value.to_string_lossy().contains(marker)),
+                    "setup did not point XDG_STATE_HOME at the temp dir"
+                );
+                panic!("deliberate panic to exercise the restore path");
+            });
+        });
+        assert!(result.is_err(), "body was expected to panic");
+
+        for (name, value) in [
+            ("XDG_CONFIG_HOME", std::env::var_os("XDG_CONFIG_HOME")),
+            ("XDG_STATE_HOME", std::env::var_os("XDG_STATE_HOME")),
+        ] {
+            let leaked = value
+                .as_ref()
+                .is_some_and(|value| value.to_string_lossy().contains(marker));
+            assert!(
+                !leaked,
+                "{name} still points at the temp dir after a panicking body: {value:?}"
+            );
+        }
     }
 
     #[test]

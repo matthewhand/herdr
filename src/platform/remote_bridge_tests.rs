@@ -14,7 +14,18 @@ fn bridge_child() {
     };
     let stream = crate::ipc::connect_local_stream(&PathBuf::from(path)).unwrap();
     let timeout = (std::env::var_os("HERDR_BRIDGE_TEST_LEGACY").is_none()).then_some(TIMEOUT);
-    super::unix_common::forward_remote_bridge_stdio_with_timeout(stream, timeout).unwrap();
+    // The parent owns the read end of this child's stdout pipe and closes it when
+    // it tears the child down. A write racing that teardown returns EPIPE, which
+    // is the parent going away rather than a bridge fault, so the child exits
+    // quietly instead of panicking. This mirrors the production behaviour in
+    // `tests/broken_pipe.rs`. The parent's own assertions on exit status and
+    // forwarded payload are what actually verify the bridge, so nothing is lost.
+    if let Err(err) = super::unix_common::forward_remote_bridge_stdio_with_timeout(stream, timeout)
+    {
+        if !crate::ipc::is_connection_closed_error(&err) {
+            panic!("remote bridge child failed: {err}");
+        }
+    }
 }
 
 struct Bridge {
