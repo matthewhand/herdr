@@ -1859,8 +1859,21 @@ mod tests {
                 .expect("fake clipboard command should be executable");
         }
 
+        // Prepend the fake-tool directory rather than replacing PATH outright.
+        // The fake `wl-copy`/`xclip` are still found first, but a bare `sh` or
+        // `printf` spawned by a concurrent test still resolves, so this test
+        // cannot turn an unrelated spawn into NotFound. Matches the pattern the
+        // other fake-clipboard tests in this file already use.
+        let test_path = match cleanup.old_path.as_ref() {
+            Some(path) => {
+                let mut paths = vec![temp_dir.clone()];
+                paths.extend(std::env::split_paths(path));
+                std::env::join_paths(paths).expect("test path should be valid")
+            }
+            None => temp_dir.clone().into_os_string(),
+        };
         unsafe {
-            std::env::set_var("PATH", &temp_dir);
+            std::env::set_var("PATH", &test_path);
             std::env::set_var("WAYLAND_DISPLAY", "wayland-0");
             std::env::set_var("DISPLAY", ":0");
             std::env::set_var("HERDR_TEST_XCLIP_PAYLOAD", &payload);
@@ -1876,6 +1889,9 @@ mod tests {
 
     #[test]
     fn finite_clipboard_commands_report_exit_status() {
+        let _guard = env_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let success = ClipboardCommand {
             program: "sh",
             args: &["-c", "cat >/dev/null"],
@@ -1923,6 +1939,9 @@ mod tests {
 
     #[test]
     fn read_clipboard_text_with_command_reads_utf8() {
+        let _guard = env_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let command = ClipboardCommand {
             program: "printf",
             args: &["feature/linear-302"],
@@ -1936,6 +1955,9 @@ mod tests {
 
     #[test]
     fn read_clipboard_text_with_command_rejects_oversized_output() {
+        let _guard = env_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let command = ClipboardCommand {
             program: "sh",
             args: &["-c", "yes x | head -c 1048578"],
@@ -1946,6 +1968,9 @@ mod tests {
 
     #[test]
     fn read_clipboard_image_with_spawned_command_reads_under_limit() {
+        let _guard = env_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let mut command = Command::new("sh");
         command.arg("-c").arg("printf image");
 
@@ -1957,6 +1982,9 @@ mod tests {
 
     #[test]
     fn read_clipboard_image_with_spawned_command_rejects_over_limit() {
+        let _guard = env_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let mut command = Command::new("sh");
         command.arg("-c").arg("printf oversized");
 
@@ -2082,6 +2110,9 @@ mod tests {
 
     #[test]
     fn read_validated_clipboard_image_accepts_real_png_payload() {
+        let _guard = env_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         assert_eq!(
             read_validated_clipboard_image(
                 "sh",
@@ -2097,6 +2128,9 @@ mod tests {
 
     #[test]
     fn read_wsl_clipboard_image_accepts_png_from_windows_command() {
+        let _guard = env_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         assert_eq!(
             read_wsl_clipboard_image_with_command(|program| {
                 assert_eq!(program, "powershell.exe");

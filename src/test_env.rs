@@ -27,6 +27,23 @@
 //! Adding an acquisition inside any of those would self-deadlock, because their
 //! callers already hold [`lock`].
 //!
+//! # Readers
+//!
+//! Holding the lock is also required by tests that *resolve a program by bare
+//! name* — `Command::new("sh")`, `ClipboardCommand { program: "printf" }`.
+//! Those calls read process-global `PATH`, so they race every test that replaces
+//! `PATH` with a fake-tool directory or empties it, and a spawn failure is
+//! indistinguishable from a genuinely missing tool. The clipboard tests in
+//! `src/platform/linux.rs` are the worked example: they spawn `/bin/sh` and
+//! `/usr/bin/printf` for real while `failed_wl_copy_uses_x11_fallback`
+//! shadows `PATH`.
+//!
+//! Roughly 30 further tests elsewhere in `src/` spawn a `PATH`-resolved bare
+//! program without holding this lock (`git`, `bash`, `sh`). They are latent
+//! instances of the same race. `just test` runs them under `cargo nextest`,
+//! which gives every test its own process and therefore its own environment, so
+//! they do not surface there; only thread-per-test `cargo test` exposes them.
+//!
 //! # Poisoning
 //!
 //! [`lock`] recovers from poisoning instead of propagating it. A single test
