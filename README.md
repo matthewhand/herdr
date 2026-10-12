@@ -1,5 +1,16 @@
-# herdr
+# herdr (fork)
 
+> **fork note — what's different from upstream [`herdrdev/herdr`](https://github.com/herdrdev/herdr)**
+>
+> This is Matthew Hand's fork of Herdr. It tracks upstream `master` and carries the following changes on top:
+>
+> - **Freebuff / Codebuff agent detection** (`feat: detect Freebuff as a first class agent`) — a bundled, evidence-based screen-detection manifest `src/detect/manifests/freebuff.toml` plus a distribution catalog entry, so panes running `freebuff`/`codebuff` report `working`, `blocked`, and idle states like other state-only agents. This mirrors [upstream discussion #4832](https://github.com/herdrdev/herdr/discussions/4832), which is still awaiting maintainer triage.
+> - **`kilocode` binary-name detection** (`feat: detect kilocode binary name as the kilo agent`) — the new Kilo CLI (`@kilocode/cli`) ships a `kilocode` launcher and a `kilo` shim that exec the same binary, so both names now map to the existing `kilo` agent instead of showing up as unknown.
+> - **test-infrastructure fixes** — a shared process-wide env mutex (`src/test_env.rs`), poisoning-tolerant locks, and a panic-safe manifest-cache guard, so env-mutating tests can't cascade-fail each other.
+>
+> Feature branches of interest: `feat/freebuff-kilo-agents` (carries all of the above). PRs to upstream are opened from here only after maintainer triage of #4832, since unsolicited implementation PRs are auto-closed there.
+
+---
 
 <p align="center">
   <img src="assets/logo.png" alt="herdr" width="100" />
