@@ -58,9 +58,9 @@ mod terminal_effects;
 mod terminal_modes;
 mod terminal_notify;
 mod terminal_theme;
-mod thread_spawn;
 #[cfg(test)]
 mod test_env;
+mod thread_spawn;
 mod ui;
 mod update;
 mod workspace;

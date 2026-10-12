@@ -221,7 +221,10 @@ fn lookup_agent(name: &str) -> Option<Agent> {
         "amp" | "amp-local" => Some(Agent::Amp),
         "grok" | "grok-build" => Some(Agent::Grok),
         "hermes" | "hermes-agent" => Some(Agent::Hermes),
-        "kilo" | "kilo-code" | "kilo code" => Some(Agent::Kilo),
+        // The `kilocode` npm launcher installs a binary named `kilocode` (and a
+        // `kilo` compatibility shim) that both exec the same packed CLI, so both
+        // names identify the same Kilo agent.
+        "kilo" | "kilo-code" | "kilo code" | "kilocode" => Some(Agent::Kilo),
         // Freebuff is the ad-supported CLI published on the Codebuff platform.
         // Its npm launcher is a thin shim that execs the downloaded native
         // release, but the running process keeps the `freebuff` name even when
@@ -1013,6 +1016,11 @@ mod tests {
         assert_eq!(identify_agent("hermes-agent"), Some(Agent::Hermes));
         assert_eq!(identify_agent("kilo"), Some(Agent::Kilo));
         assert_eq!(identify_agent("kilo-code"), Some(Agent::Kilo));
+        assert_eq!(identify_agent("kilocode"), Some(Agent::Kilo));
+        assert_eq!(
+            identify_agent("/home/user/.nvm/bin/kilocode"),
+            Some(Agent::Kilo)
+        );
         assert_eq!(identify_agent("freebuff"), Some(Agent::Freebuff));
         assert_eq!(identify_agent("codebuff"), Some(Agent::Freebuff));
         assert_eq!(
